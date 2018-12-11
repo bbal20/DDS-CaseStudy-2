@@ -1,0 +1,246 @@
+---
+title: "DDS Case Study 2"
+author: "Kito Patterson & Lei Jiang"
+date: "11/29/2018"
+output: html_document
+keep_md: yes 
+---
+
+#Introduction
+DDS Analytics has tasked us with to uncover insights and trends specific to Job Roles within the company and how those factors contribute to turnover/attrition. Ultimately, our goal is to develop a model that will predict churn with a high level of accuracy (Minimum 60%). They have also asked us to shed light on the top 3 variables that have a sizeable impact on attrition rates.
+
+
+#Primary Objectives
+1.) Uncover any intersting trends specific to Job Role <br />
+2.) Report the top 3 factors that contribute to turnover <br />
+3.) Build a model to predict attrition 
+
+#Packages
+```{r message=FALSE}
+library(ggplot2)
+library(corrplot)
+library(dplyr)
+library(caret)
+library(MASS)
+library(randomForest)
+library(e1071)
+```
+
+#Data Import
+```{r echo=TRUE}
+dfTrain <- read.csv(file="~/Desktop/DDS-CaseStudy2/CaseStudy2-data.csv", header=TRUE, stringsAsFactors=TRUE)
+
+dfVal <- read.csv(file="~/Desktop/DDS-CaseStudy2/CaseStudy2validation.csv", header=TRUE, stringsAsFactors=TRUE)
+```
+
+#Data Check
+We want to make sure the dataset provided does not have any missing values or mixed data types before we begin our explaoratory and modeling exercises. 
+```{r echo=TRUE}
+#str(df)
+
+#No missing values 
+#sum(is.na(df))
+colSums(is.na(dfTrain))
+
+#View(summary(df))
+```
+
+
+#Data Preparation
+There are a few variables that seem useless for the purposes of this analysis. ID, Standard Hours, Employee Number and Employee Count will be removed from the table
+```{r echo=TRUE}
+#Recode Attrition Column to numeric if necessary
+#df$Attrition2 <- ifelse(df$Attrition == "Yes", 1, 0)
+
+#Drop ID, StandardHours, EmployeeCount, Over18 columns
+#Most values do not change so SD is 0
+df_stage <- dfTrain[,!(names(dfTrain) %in% c("ID", "StandardHours", "EmployeeNumber", "EmployeeCount", "Over18"))] 
+```
+
+An additional dataframe was created with only numeric values to be read by a correlation heatmap later in the analysis.
+```{r echo=TRUE}
+#Return numeric values only
+df_numeric <- df_stage[, sapply(df_stage, is.numeric)]
+
+#Correlation Plot
+df_corr <- round(cor(df_numeric),2)
+```
+
+
+
+
+
+
+#Data Exploration
+More than 80% of the training dataset consist of employees who are still retained
+```{r echo=TRUE}
+table(dfTrain$Attrition)
+barplot(prop.table(table(dfTrain$Attrition)))
+```
+
+We created a correlation matrix to view possible multicollinearity between variables that need to be addressed before the modeling phase to avoid redundancy. 
+
+The variables below seem to have high collinearity so we will remove some of them for the Custom model at a later phase:
+
+MonthlyIncome corr JobLevel <br />
+PercentSalaryHike corr PerformanceRating <br />
+TotalWorkingYears corr JobLevel <br />
+Age corr TotalWorkingYears <br />
+YearsInCurrentRole corr TotalWorkingYears 
+```{r echo=TRUE}
+corrplot(df_corr, order="FPC", title="Variable Corr Heatmap",tl.srt=45)
+```
+
+Figure A shows the count distribution of employees by job role. Sales Executive jobs are the most prevalent at 22% of all Job Roles followed closely by Research Scientist at 20% and Lab Technicians at 18% rounding out the top 3.
+```{r echo=TRUE}
+p1 <- ggplot(dfTrain, aes(x=JobRole), color=JobRole) + ggtitle("Figure A: Job Role") + 
+  geom_bar(aes(y = 100*(..count..)/sum(..count..), fill=JobRole),  width = 0.5) + 
+  #geom_text(aes(label=100*(..count..)/sum(..count..)), vjust=0) +
+  labs(y="Percentage") + 
+  coord_flip() + 
+  theme_linedraw() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+p1
+```
+
+Figure B is another view showing the percentage of total by each Job Role
+```{r echo=TRUE}
+#Test plot above with Percentages
+p2 <- ggplot(dfTrain, aes(x=JobRole, y = ..prop.., group=1)) +
+  geom_bar() +
+  geom_text(stat = "count", 
+            aes(label = round(..prop.., 2), y = ..prop.. + 0.02)) +
+            coord_flip() +
+  ggtitle("Figure B: Job Role by Percent of Total") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+p2
+```
+
+Although Lab Technician roles account for almost 20% of all Job Roles, the attrition total and porportion seems to abnormally high. In fact, the highest in the company. Further exploratory analysis may be needed to understand why that may be.
+```{r echo=TRUE}
+p3 <- ggplot(dfTrain,aes(x = JobRole,fill = Attrition)) +
+  geom_bar(position = "dodge") +
+    ggtitle("Job Role vs Attrition - Count") +
+    coord_flip() +
+    theme(plot.title = element_text(hjust = 0.5))
+p3
+```
+
+Create table for means by JobRole (MAY NOT BE NEEDED). ANOVA table may be a better way to test for difference in means among varying groups. 
+```{r echo=TRUE}
+df_means <- group_by(dfTrain, JobRole) %>%
+  summarize(JI_mean = mean(JobInvolvement, na.rm=TRUE),
+  PR_mean = mean(PerformanceRating, na.rm=TRUE),
+  ES_mean = mean(EnvironmentSatisfaction, na.rm=TRUE))
+
+df_means
+```
+
+
+
+
+
+
+#Modeling
+We were tasked with building a model to predict attrition. To be thorough, we decided to build 3 different classification models and compare their accuracies. First, a Logistic Regression model was chosen given the dependent variable is binary. Naive Bayes and Random Forest were also used for comparison purposes.
+
+
+Logistic Regression Model
+```{r echo=TRUE}
+lr_mod <- glm(Attrition ~ MonthlyIncome + JobSatisfaction + Age + Education + JobLevel +
+  PerformanceRating + YearsSinceLastPromotion + YearsWithCurrManager + WorkLifeBalance +
+  YearsAtCompany + JobRole + EducationField , data=df_stage, family=binomial(link='logit'))
+```  
+
+
+The summary of the custom model shows that Age and Sales Executive roles are vaiables that explain attrition behavior. 
+```{r echo=TRUE}
+summary(lr_mod)
+```
+
+Apply training model to test model
+```{r echo=TRUE}
+#Store the probabilites for every observation in the dataset 
+dfVal$model_prob <- predict(lr_mod, dfVal, type = "response")
+#Tranform the “Yes” and “No” to binary variables
+Test <- dfVal  %>% mutate(model_pred = 1*(model_prob > .50) + 0,
+                                 visit_binary = 1*(Attrition == "Yes") + 0)
+#Compare the newly created columns “model_pred” and “visit_binary” to calculate the accuracy of our model       
+Test <- Test %>% mutate(accurate = 1*(model_pred == visit_binary))
+#Accuracy Score
+sum(Test$accurate)/nrow(Test)
+```
+
+#Random Forest Model
+```{r echo=TRUE}
+model1 <- randomForest(Attrition~., data=dfTrain, importance = TRUE)
+model1
+```
+
+Predicting on train set
+```{r echo=TRUE}
+predTrain <- predict(model1, dfVal, type = "class")
+```
+
+Checking classification accuracy
+```{r echo=TRUE}
+confusionMatrix(table(predTrain, dfVal$Attrition))
+cMatrix<-table(predTrain, dfVal$Attrition)
+plot(cMatrix,ylab="Actual", xlab="Predicted", 'Random Forest Confusion Matrix')
+```
+
+Check important variables
+```{r echo=TRUE}
+importance(model1) 
+```
+
+```{r echo=TRUE}
+#varImpPlot(model1) 
+varImpPlot(model1,type=1, main='Random Tree Variable Importance')
+```
+
+Naive Bayes Model
+```{r echo=TRUE}
+Naive_Bayes_Model=naiveBayes( Attrition~., data=dfTrain)
+
+#Summary of model
+Naive_Bayes_Model
+#Prediction on the dataset
+dfPreds0=predict(Naive_Bayes_Model,dfVal)
+#Confusion matrix to check accuracy
+#ctable(NB_Predictions,df2$Attrition)
+confusionMatrix(table(dfPreds0,dfVal$Attrition))
+cMatrix<-table(dfPreds0, dfVal$Attrition)
+plot(cMatrix, col="blue", ylab="Actual", xlab="Predicted", main='Naive Bayes Confusion Matrix')
+```
+
+#Output Dataset
+
+```{r echo=FALSE}
+dfPreds1=cbind(dfVal$ID, dfPreds0)
+dfPreds=as.data.frame(dfPreds1)
+
+names(dfPreds)<- c("ID", "Attrition")
+
+#Outputting data
+write.csv(dfPreds,"~/Desktop/DDS-CaseStudy2/KPatterson_DDSCaseStudy2_Predict.csv",row.names = FALSE)
+```
+
+
+
+
+Youtube: https://www.youtube.com/watch?v=l3HsePVdoS4 <br>
+Github: https://github.com/bbal20/DDS-CaseStudy-2
+
+
+
+
+
+
+
+
+
+
+
+
+
