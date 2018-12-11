@@ -1,6 +1,6 @@
 ---
 title: "DDS Case Study 2"
-author: "Kito Patterson & Lei Jiang"
+author: "Kito Patterson"
 date: "11/29/2018"
 output: html_document
 keep_md: yes 
@@ -229,7 +229,7 @@ write.csv(dfPreds,"~/Desktop/DDS-CaseStudy2/KPatterson_DDSCaseStudy2_Predict.csv
 
 
 
-Youtube: https://www.youtube.com/watch?v=l3HsePVdoS4 <br>
+Youtube: https://youtu.be/l3HsePVdoS4 <br>
 Github: https://github.com/bbal20/DDS-CaseStudy-2
 
 
